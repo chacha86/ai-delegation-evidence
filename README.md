@@ -85,7 +85,7 @@ python -X utf8 replay/replay.py q-haiku-A-1    # Haiku · 결제 기능만 → �
 ### 발견 4. 테스트를 통과해도 버그는 남을 수 있다
 - Opus 자체 테스트는 서비스 직접 호출: `runs/05-point-gift/s-opus-P-2/AI가-바꾼-코드.patch` 에서 `PointServiceConcurrencyTest` 검색 (`pointService.transfer(...)`)
 - Opus 보고서의 "잠금을 빼면 실패하는 것도 확인": 같은 폴더 `AI-보고서.md`
-- 그래도 HTTP로는 실패, 3번 반복 모두: `validation/05-동시성검사-3회반복.txt` (`s-opus-P-2 C1: FAIL FAIL FAIL`)
+- 그래도 HTTP로는 실패, 강사 PC에서 3번 반복 모두: `validation/05-동시성검사-3회반복.txt` (`s-opus-P-2 C1: FAIL FAIL FAIL`). 동시 요청이 정확히 겹쳐야 터지는 버그라 다시 돌리면 3번 중 2번처럼 달라질 수 있습니다. 한 번이라도 사라지면 버그입니다.
 - 관리자 열람: `runs/02-payment-v1/p-opus-A-1/AI가-바꾼-코드.patch` 에서 `isAdmin` 검색 / 채점은 `채점-결과.txt` 11/11
 - 예전 데이터 회귀: `runs/04-add-rules-later/r-haiku-A-1-2/AI-보고서.md` ("가격이 1~99인 과거 유료 글은 구매가 실패") / 응답형식 비교는 `응답형식-비교.txt` 0/35
 - 숨긴 테스트의 빈틈: `validation/02-hidden-test-검증-1차(버그 심기).txt` 의 `mut-charge0: 합계 11/11`
