@@ -130,8 +130,11 @@ def scenario_point(rounds):
         expected_paid = (rb // 10_000) * 10_500
         lost = paid - expected_paid
         lost_total += max(lost, 0)
-        print(f"   → {'정상' if lost == 0 and n_ok <= 3 else '이상'}: 받은 사람이 받은 선물 {rb // 10_000}건이면 낸 돈은 {expected_paid:,}P 여야 합니다. "
-              + (f"차이 {lost:,}P 가 사라졌습니다." if lost > 0 else "돈이 맞습니다."))
+        if lost == 0 and n_ok <= 3:
+            print(f"   → 정상: 낸 돈 {paid:,}P = 도착한 선물 {rb // 10_000}건 × 10,500P. 돈이 맞습니다.")
+        else:
+            print(f"   → 이상: 보낸 사람은 {paid:,}P를 냈는데 받은 사람에게 도착한 선물은 {rb // 10_000}건({rb:,}P)입니다. "
+                  f"{max(lost, 0):,}P가 사라졌습니다.")
     return lost_total
 
 

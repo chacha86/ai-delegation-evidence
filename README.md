@@ -16,6 +16,20 @@
 
 AI가 만든 앱을 다시 띄우고, 동시에 요청을 보내 돈이 맞는지 화면에 보여 줍니다. JDK 21 · Python 3 · git 이 필요합니다.
 
+먼저 저장소 폴더로 이동합니다. 쓰는 터미널에 따라 경로 쓰는 법이 다릅니다.
+
+```
+# PowerShell / cmd (Windows 기본 터미널)
+cd C:\ctj\ai-delegation-evidence
+python -X utf8 replay\replay.py s-opus-P-2
+
+# Git Bash / macOS / Linux
+cd /c/ctj/ai-delegation-evidence
+python -X utf8 replay/replay.py s-opus-P-2
+```
+
+PowerShell 에 `/c/ctj/...` 를 쓰면 `C:\c\ctj\...` 로 읽혀 "경로를 찾을 수 없습니다"가 납니다. 저장소를 다른 곳에 받았다면 그 경로로 바꾸세요.
+
 ```
 python -X utf8 replay/replay.py s-opus-P-2     # Opus · 기획서 복붙 2회차 → 포인트가 사라짐
 python -X utf8 replay/replay.py s-opus-P-1     # Opus · 기획서 복붙 1회차 → 정상
