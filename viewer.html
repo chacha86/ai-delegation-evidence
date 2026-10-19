@@ -125,6 +125,42 @@ table.plain th,table.plain td{border-bottom:1px solid var(--rule);padding:6px 10
 .docs summary{cursor:pointer;padding:10px 14px;font-weight:600}
 .docs .inner{padding:0 14px 14px}
 footer{font-size:.8rem;color:var(--muted)}
+/* 따라 보기 */
+.tour{display:flex;flex-direction:column;gap:16px;max-width:900px}
+.progress{display:flex;gap:6px;flex-wrap:wrap}
+.progress button{font:inherit;font-size:.78rem;font-weight:600;border:1px solid var(--rule);background:var(--sheet);color:var(--muted);border-radius:999px;padding:3px 11px;cursor:pointer}
+.progress button[aria-current="true"]{background:var(--accent);border-color:var(--accent);color:var(--sheet)}
+.progress button.done{color:var(--accent);border-color:var(--accent)}
+.step{background:var(--sheet);border:1px solid var(--rule);border-radius:10px;padding:22px 24px;display:flex;flex-direction:column;gap:16px}
+.step .qno{font-family:var(--f-mono);font-size:.8rem;color:var(--accent);font-weight:600}
+.step h2{margin:0;font-size:1.35rem;line-height:1.4;text-wrap:balance}
+.step .lead{margin:0;font-size:1rem;max-width:68ch}
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px}
+.card{border-radius:8px;padding:12px 14px;display:flex;flex-direction:column;gap:6px;border:1px solid var(--rule);min-width:0}
+.card .lab{font-size:.76rem;font-weight:700;letter-spacing:.03em}
+.card .who{font-size:.76rem;color:var(--muted)}
+.card .q{font-size:.92rem;white-space:pre-wrap;overflow-wrap:anywhere}
+.card.prompt{background:var(--paper)} .card.prompt .lab{color:var(--muted)}
+.card.claim{background:var(--accent-soft);border-color:transparent} .card.claim .lab{color:var(--accent)}
+.card.fact-bad{background:var(--fail-cell);border-color:transparent} .card.fact-bad .lab{color:var(--fail)}
+.card.fact-ok{background:var(--pass-cell);border-color:transparent} .card.fact-ok .lab{color:var(--pass)}
+.card.code{background:var(--code);grid-column:1/-1} .card.code .lab{color:var(--muted)}
+.card.code .q{font-family:var(--f-mono);font-size:.8rem;white-space:pre;overflow-x:auto}
+.card .open{align-self:flex-start;font:inherit;font-size:.78rem;font-weight:600;border:none;background:none;color:var(--accent);padding:0;cursor:pointer;text-decoration:underline}
+.meaning{border-left:4px solid var(--accent);padding:10px 14px;background:var(--paper);border-radius:0 6px 6px 0;display:flex;flex-direction:column;gap:4px}
+.meaning b{font-size:.82rem;color:var(--accent)}
+.meaning p{margin:0;max-width:68ch}
+.nav2{display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap}
+.nav2 button{font:inherit;font-weight:600;border:1px solid var(--accent);border-radius:8px;padding:8px 16px;cursor:pointer;background:var(--sheet);color:var(--accent)}
+.nav2 button.primary{background:var(--accent);color:var(--sheet)}
+.nav2 button:disabled{opacity:.35;cursor:default}
+.howto{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px}
+.howto div{border:1px solid var(--rule);border-radius:8px;padding:12px;background:var(--paper);display:flex;flex-direction:column;gap:4px}
+.howto b{font-size:.95rem}
+.howto span{font-size:.85rem;color:var(--muted)}
+.tabhint{margin:0 0 12px;padding:8px 12px;border-radius:6px;background:var(--paper);font-size:.86rem;color:var(--muted)}
+.runlist .rl{display:flex;flex-direction:column;align-items:flex-start;gap:0}
+.runlist .rl small{font-family:var(--f-mono);font-size:.7rem;color:var(--muted)}
 @media (max-width:800px){.runs-layout{grid-template-columns:1fr}.runlist{position:static;max-height:260px}}
 </style>
 
@@ -132,17 +168,20 @@ footer{font-size:.8rem;color:var(--muted)}
 <header>
   <span class="eyebrow">AI로 잘 개발하기 · 증거 뷰어</span>
   <h1>AI에게 맡긴 46번의 실험, 원자료로 확인하기</h1>
-  <p class="lede">문서에 나온 결과를 AI가 받은 지시서, AI가 낸 보고서, AI가 바꾼 코드, 숨긴 테스트 채점 결과로 직접 확인할 수 있습니다. "발견" 탭의 버튼을 누르면 해당 원자료의 그 부분으로 바로 이동합니다.</p>
+  <p class="lede">처음이라면 <b>따라 보기</b>부터 보세요. 질문 하나마다 "AI가 한 말"과 "실제 결과"를 나란히 보여 줍니다. 7단계, 10분이면 끝납니다.</p>
 </header>
 
 <nav class="top" role="tablist">
-  <button role="tab" id="t-claims" aria-selected="true" data-panel="claims">발견 6가지</button>
-  <button role="tab" id="t-runs" aria-selected="false" data-panel="runs">실행 46개</button>
-  <button role="tab" id="t-grid" aria-selected="false" data-panel="grid">결과 격자</button>
-  <button role="tab" id="t-docs" aria-selected="false" data-panel="docs">기준 · 예측 · 검증</button>
+  <button role="tab" id="t-tour" aria-selected="true" data-panel="tour">① 따라 보기 (처음이면 여기)</button>
+  <button role="tab" id="t-claims" aria-selected="false" data-panel="claims">② 발견별 근거 모음</button>
+  <button role="tab" id="t-runs" aria-selected="false" data-panel="runs">③ 실행 46개 원자료</button>
+  <button role="tab" id="t-grid" aria-selected="false" data-panel="grid">④ 결과 한눈에 보기</button>
+  <button role="tab" id="t-docs" aria-selected="false" data-panel="docs">⑤ 자료실</button>
 </nav>
 
-<section class="panel" id="p-claims"><div class="claims" id="claims"></div></section>
+<section class="panel" id="p-tour"><div class="tour" id="tour"></div></section>
+
+<section class="panel" id="p-claims" hidden><div class="claims" id="claims"></div></section>
 
 <section class="panel" id="p-runs" hidden>
   <div class="runs-layout">
@@ -203,7 +242,7 @@ footer{font-size:.8rem;color:var(--muted)}
     ]},
     {t:'테스트를 통과해도 버그는 남을 수 있다', p:'Opus는 동시성 테스트를 직접 만들고 락을 빼면 실패하는 것까지 확인했지만, 테스트가 서비스 코드를 직접 호출해 HTTP 경로에서만 생기는 버그를 놓쳤습니다. 숨긴 테스트에 없는 경우나 예전 데이터도 통과로 보였습니다.', ev:[
       ['Opus 보고서: 잠금을 빼면 테스트가 실패하는 것까지 확인', '05-point-gift/s-opus-P-2','report','잠금을 잠시 빼고'],
-      ['Opus 동시성 테스트: pointService.transfer 를 직접 호출', '05-point-gift/s-opus-P-2','patch','pointService.transfer'],
+      ['Opus 동시성 테스트: pointService.transfer 를 직접 호출', '05-point-gift/s-opus-P-2','patch','pointService.transfer(senderId'],
       ['그래도 HTTP 동시 요청으로는 실패, 3번 반복 모두', 'doc:숨긴 테스트 검증 — 동시성 3회 반복 (포인트)','','s-opus-P-2'],
       ['숨긴 테스트 11/11 만점인데 관리자가 유료 본문 열람', '02-payment-v1/p-opus-A-1','grade','P5'],
       ['규칙 추가 후 응답 비교 35/35 동일인데, 예전 1~99원 글은 구매 실패 (AI 보고서)', '04-add-rules-later/r-haiku-A-1-2','report','1~99'],
@@ -229,12 +268,19 @@ footer{font-size:.8rem;color:var(--muted)}
 
   // ----- 실행 목록 -----
   const scoreCls = s => { const m = /^(\d+)\/(\d+)$/.exec(s||''); return m ? (m[1]===m[2]?'full':'part') : ''; };
+  const MODEL = {haiku:'Haiku', sonnet:'Sonnet', opus:'Opus'};
+  function label(r){
+    const rep = (/-(\d+)$/.exec(r.name)||[])[1];
+    const short = {'기존 테스트 줌':'테스트 줌','테스트 안 줌':'테스트 안 줌','테스트 안 줌 + grilling':'grilling','기능만':'기능만','정책을 말로':'정책 말로','정책 + 예시 테스트':'정책+예시 테스트','기획서 복붙':'기획서 복붙','기획서 + 개발자 보강':'개발자 보강','"기획서대로 만들어줘" 한 줄':'한 줄 지시'}[r.cond];
+    if (r.exp === '04-add-rules-later') return `${MODEL[r.model]||r.model} · 규칙 추가 요청 · ${rep}회차`;
+    return `${MODEL[r.model]||r.model} · ${short||r.cond}${rep?` · ${rep}회차`:''}`;
+  }
   let html = '';
   for (const [exp, info] of Object.entries(D.exps)){
     const rs = D.runs.filter(r => r.exp === exp);
     if (!rs.length) continue;
     html += `<h3>${esc(info[0])} · ${esc(info[1])}</h3>`;
-    for (const r of rs) html += `<button data-open="${esc(r.id)}"><span class="rn">${esc(r.name)}</span><span class="score ${scoreCls(r.summary)}">${esc(r.summary.length>12?'':r.summary)}</span></button>`;
+    for (const r of rs) html += `<button data-open="${esc(r.id)}"><span class="rl"><span>${esc(label(r))}</span><small>${esc(r.name)}</small></span><span class="score ${scoreCls(r.summary)}">${esc(r.summary.length>12?'':r.summary)}</span></button>`;
   }
   $('#runlist').innerHTML = html;
 
@@ -256,7 +302,18 @@ footer{font-size:.8rem;color:var(--muted)}
     if (!r.grade.length) return '<p class="hint">이 실험은 동작 비교와 원래 테스트 결과로 채점했습니다.</p><pre class="raw">'+esc(r.files.gradeRaw)+'</pre>';
     return '<p class="hint">AI에게 보여 주지 않은 숨긴 테스트. 실제 서버를 띄우고 HTTP 로 호출한 결과입니다.</p><div class="grade">' + r.grade.map(g=>`<div class="gl ${g.ok?'ok':'ng'}"><span class="st">${g.ok?'통과':'실패'}</span><span class="id">${esc(g.id)}</span><span><b>${esc(g.name)}</b>${g.kind?`<span class="kind">${esc(g.kind)}</span>`:''}<br>${esc(g.detail)}</span></div>`).join('') + '</div>';
   }
+  const TABHINT = {
+    prompt:'사람이 AI에게 준 지시서 원문입니다. 무엇을 알려 줬고 무엇을 안 알려 줬는지 보세요.',
+    report:'AI가 일을 마치고 직접 쓴 보고서입니다. <b>AI의 주장</b>이라 사실과 다를 수 있어요. "확인하지 못한 것" 항목을 꼭 보세요.',
+    grade:'AI에게 보여 주지 않은 시험지로 채점한 <b>실제 결과</b>입니다. 보고서의 주장과 비교해 보세요.',
+    patch:'AI가 실제로 고친 코드 전체입니다. 파일 이름을 누르면 펼쳐집니다.',
+    snap:'규칙을 추가하기 전과 후에 같은 요청을 보내 응답이 달라졌는지 본 결과입니다.',
+    injected:'실행 환경(플러그인)이 지시서 뒤에 자동으로 붙인 도구 사용 안내입니다. 과제와는 관계없고, 모든 실행이 똑같이 받았습니다.'
+  };
   function body(r, tab){
+    return `<p class="tabhint">${TABHINT[tab]||''}</p>` + body0(r, tab);
+  }
+  function body0(r, tab){
     const f = r.files;
     if (tab==='prompt') return f.prompt ? md(f.prompt) : '<p class="hint">없음</p>';
     if (tab==='report') return f.report ? md(f.report) : '<p class="hint">없음</p>';
@@ -286,7 +343,7 @@ footer{font-size:.8rem;color:var(--muted)}
     cur = r; curTab = tab && has(r, tab) ? tab : (has(r,'report') ? 'report' : 'grade'); curFind = find || '';
     document.querySelectorAll('#runlist button').forEach(b => b.setAttribute('aria-current', b.dataset.open === id ? 'true' : 'false'));
     const info = D.exps[r.exp] || [r.exp, ''];
-    $('#detail').innerHTML = `<div class="dhead"><h2>${esc(r.name)}</h2><div class="meta"><span>실험 <b>${esc(info[0])}</b></span><span>모델 <b>${esc(r.model)}</b></span><span>조건 <b>${esc(r.cond)}</b></span>${r.summary?`<span>결과 <b class="score ${scoreCls(r.summary)}">${esc(r.summary)}</b></span>`:''}</div></div>
+    $('#detail').innerHTML = `<div class="dhead"><h2>${esc(label(r))} <small style="font-size:.75rem;color:var(--muted)">${esc(r.name)}</small></h2><div class="meta"><span>실험 <b>${esc(info[0])}</b></span><span>모델 <b>${esc(r.model)}</b></span><span>조건 <b>${esc(r.cond)}</b></span>${r.summary?`<span>결과 <b class="score ${scoreCls(r.summary)}">${esc(r.summary)}</b></span>`:''}</div></div>
       <div class="dtabs" role="tablist">${TABS.map(([k,l])=>`<button role="tab" data-tab="${k}" aria-selected="${k===curTab}" ${has(r,k)?'':'disabled'}>${l}</button>`).join('')}</div>
       <div class="dbody" id="dbody">${body(r, curTab)}</div>`;
     highlight($('#dbody'), curFind);
@@ -317,6 +374,82 @@ footer{font-size:.8rem;color:var(--muted)}
   // ----- 기준·예측·검증 -----
   $('#docs').innerHTML = Object.entries(D.docs).map(([k,v])=>`<details data-name="${esc(k)}"><summary>${esc(k)}</summary><div class="inner">${/\.md|^#/m.test(v.slice(0,3)) || v.trim().startsWith('#') ? md(v) : '<pre class="raw">'+esc(v)+'</pre>'}</div></details>`).join('');
 
+  // ----- 따라 보기 -----
+  function srcOf(ref, tab){
+    if (ref.startsWith('doc:')) return D.docs[ref.slice(4)] || '';
+    const r = byId[ref]; if (!r) return '';
+    const f = r.files;
+    return {prompt:f.prompt, report:f.report, patch:f.patch, grade:f.gradeRaw}[tab] || '';
+  }
+  // 원자료에서 검색어가 든 줄(과 앞뒤 몇 줄)을 그대로 뽑는다
+  function excerpt(ref, tab, find, before, after){
+    const lines = srcOf(ref, tab).split('\n');
+    const i = lines.findIndex(l => l.includes(find));
+    if (i < 0) return '(원자료에서 찾지 못했습니다)';
+    return lines.slice(Math.max(0, i-(before||0)), i+1+(after||0)).join('\n').replace(/^\s*[-*]\s+/gm,'· ').replace(/\*\*/g,'').trim();
+  }
+  const WHO = ref => ref.startsWith('doc:') ? ref.slice(4) : (byId[ref] ? label(byId[ref]) : ref);
+  const STEPS = [
+    {t:'이 뷰어로 무엇을 확인하나요?', lead:'같은 Spring Boot 학습용 프로젝트에 AI(Haiku · Sonnet · Opus)를 46번 시켜 봤습니다. 실행마다 아래 세 가지가 남아 있습니다.', intro:true,
+     meaning:['핵심 질문은 하나입니다. "AI가 한 말(보고서)과 실제(채점)가 같은가?"', '파란 상자 = AI가 한 말, 빨간/초록 상자 = 실제 채점 결과입니다.']},
+    {t:'같은 지시를 두 번 주면 같은 결과가 나올까?', lead:'Haiku에게 똑같은 지시서로 결제 기능을 두 번 시켰습니다.', cards:[
+      ['fact-bad','1회차 실제 결과','03-payment-v2/q-haiku-A-1','grade','P7a',0,0],
+      ['fact-ok','1회차: 작성자 적립은 통과','03-payment-v2/q-haiku-A-1','grade','P6',0,0],
+      ['fact-ok','2회차: 같은 동시성 검사는 통과','03-payment-v2/q-haiku-A-2','grade','P7a',0,0],
+      ['fact-bad','2회차: 이번엔 작성자 적립 실패','03-payment-v2/q-haiku-A-2','grade','P6',0,0]],
+     meaning:['같은 모델 · 같은 지시인데 실패한 자리가 다릅니다.', '한 번 잘 됐다고 다음에도 된다는 보장이 없습니다. 그래서 매번 확인해야 합니다.']},
+    {t:'규칙을 말해 주지 않으면 AI는 어떻게 할까?', lead:'회사 규칙은 "1회 충전은 10만 원까지"였지만, 지시서에는 적지 않았습니다.', cards:[
+      ['prompt','지시서에 적힌 것 (충전 한도 언급 없음)','03-payment-v2/q-sonnet-A-1','prompt','충전:',0,0],
+      ['claim','Sonnet이 스스로 정한 한도','03-payment-v2/q-sonnet-A-1','report','10,000,000',0,0],
+      ['claim','Opus가 스스로 정한 한도','03-payment-v2/q-opus-A-1','report','1,000,000',0,0],
+      ['fact-bad','실제 채점: 회사 규칙 위반','03-payment-v2/q-opus-A-1','grade','R2',0,0]],
+     meaning:['AI는 빈칸을 비워 두지 않고 그럴듯한 값으로 채웁니다. 코드에 "한도 처리"가 있으니 맞게 한 것처럼 보입니다.', '우리 회사만의 숫자와 규칙은 반드시 말해 줘야 합니다. 말해 준 7번은 7번 모두 지켰습니다.']},
+    {t:'AI가 "락을 걸었다"고 하면 믿어도 될까?', lead:'동시에 여러 요청이 와도 잔액이 꼬이지 않게 하는 것을 동시성 처리라고 합니다.', cards:[
+      ['claim','AI가 한 말','03-payment-v2/q-haiku-A-1','report','비관적',0,0],
+      ['fact-bad','실제: 잔액 1,000원으로 300원 글 10개를 동시에 구매','03-payment-v2/q-haiku-A-1','grade','P7a',0,0],
+      ['code','원인 코드 (AI가 쓴 코드 그대로)','03-payment-v2/q-haiku-A-1','patch','getOrCreate(it)',2,2]],
+     meaning:['락 코드는 있었지만, 락을 걸기 전에 같은 데이터를 먼저 읽어 두는 바람에 JPA 1차 캐시의 옛 잔액으로 계산했습니다.', '"락 걸었습니다"는 증거가 아닙니다. 동시에 요청을 보내 봐야 압니다.']},
+    {t:'AI가 "테스트로 확인했다"고 하면?', lead:'Opus는 동시성 테스트까지 직접 만들고, 락을 빼면 테스트가 실패하는 것도 확인했다고 보고했습니다.', cards:[
+      ['claim','AI가 한 말','05-point-gift/s-opus-P-2','report','잠금을 잠시 빼고',0,0],
+      ['code','AI의 테스트: 서비스 코드를 직접 호출','05-point-gift/s-opus-P-2','patch','pointService.transfer(senderId',2,0],
+      ['fact-bad','실제: HTTP로 동시에 요청하면 3번 모두 실패','doc:숨긴 테스트 검증 — 동시성 3회 반복 (포인트)','','s-opus-P-2',0,0]],
+     meaning:['테스트가 실제 사용자가 들어오는 길(HTTP)과 다른 길로 확인해서 버그를 놓쳤습니다.', '"테스트 통과"를 들으면 어디서, 어떻게, 무엇을 확인했는지 물어보세요.']},
+    {t:'그럼 기준을 건네면 달라질까?', lead:'같은 기획서에 개발자가 "동시 요청에도 잔액이 꼬이면 안 된다" 같은 기준과 예시 테스트를 붙여 줬습니다.', cards:[
+      ['prompt','개발자가 붙인 기준 (일부)','doc:개발자 보강','','동시에',0,0],
+      ['fact-bad','기준 없이 맡긴 Haiku: 포인트 증발','05-point-gift/s-haiku-P-1','grade','C1',0,0],
+      ['claim','기준을 받은 Haiku의 보고서','05-point-gift/s-haiku-D-1','report','발견하고 고친',0,0],
+      ['fact-ok','기준을 받은 Haiku: 실제로도 통과','05-point-gift/s-haiku-D-1','grade','C1',0,0]],
+     meaning:['가장 작은 모델도 예시 테스트가 실패하자 원인을 찾아 스스로 고쳤습니다.', '좋은 모델의 습관에 기대지 말고, 기준을 건네서 확인이 반드시 일어나게 만드세요.']},
+    {t:'"하지 마"라고 쓰면 안 할까?', lead:'모든 지시서에 "이 폴더 밖은 건드리지 않는다"를 적었습니다.', cards:[
+      ['prompt','지시서의 금지 문구','05-point-gift/s-haiku-P-1','prompt','폴더 밖',0,0],
+      ['claim','AI가 스스로 보고한 것','05-point-gift/s-haiku-P-1','report','C:\\c\\',0,0]],
+     meaning:['악의는 없었고 스스로 보고도 했지만, 폴더 밖에 파일을 만든 일이 4번 있었습니다.', '중요한 것은 "하지 마"라고 쓰는 것보다 권한 · 격리로 못 하게 만드는 것입니다.']},
+  ];
+  let stepNo = 0;
+  function renderTour(){
+    const s = STEPS[stepNo];
+    const prog = STEPS.map((x,i)=>`<button data-step="${i}" aria-current="${i===stepNo}" class="${i<stepNo?'done':''}">${i===0?'시작':i}</button>`).join('');
+    let cards = '';
+    if (s.intro){
+      cards = `<div class="howto"><div><b>① AI가 받은 지시서</b><span>사람이 AI에게 무엇을 시켰는지</span></div><div><b>② AI 보고서</b><span>AI가 "다 했다"며 쓴 글. AI의 주장</span></div><div><b>③ 숨긴 테스트 채점</b><span>AI 몰래 만든 시험지로 확인한 실제 결과</span></div></div>`;
+    } else {
+      cards = '<div class="cards">' + s.cards.map(([kind,lab,ref,tab,find,b,a])=>{
+        const q = excerpt(ref, tab, find, b, a);
+        const tag = {prompt:'지시서', claim:'AI가 한 말', 'fact-bad':'실제 결과 · 실패', 'fact-ok':'실제 결과 · 통과', code:'코드'}[kind];
+        return `<div class="card ${kind}"><span class="lab">${tag}</span><span class="who">${esc(lab)} — ${esc(WHO(ref))}</span><div class="q">${esc(q)}</div><button class="open go" data-run="${esc(ref)}" data-tab="${esc(tab)}" data-find="${esc(find)}">원문에서 직접 보기 →</button></div>`;
+      }).join('') + '</div>';
+    }
+    $('#tour').innerHTML = `<div class="progress">${prog}</div>
+      <article class="step"><span class="qno">${stepNo===0?'시작하기':'질문 '+stepNo+' / '+(STEPS.length-1)}</span><h2>${esc(s.t)}</h2><p class="lead">${esc(s.lead)}</p>${cards}
+      <div class="meaning"><b>${stepNo===0?'보는 법':'이게 무슨 뜻이냐면'}</b>${s.meaning.map(m=>`<p>${esc(m)}</p>`).join('')}</div>
+      <div class="nav2"><button data-step="${stepNo-1}" ${stepNo===0?'disabled':''}>← 이전</button>${stepNo<STEPS.length-1?`<button class="primary" data-step="${stepNo+1}">다음 질문 →</button>`:`<button class="primary" data-panel-go="grid">결과 한눈에 보기 →</button>`}</div></article>`;
+  }
+  renderTour();
+  document.getElementById('tour').addEventListener('click', e => {
+    const b = e.target.closest('[data-step]'); if (b && !b.disabled){ stepNo = +b.dataset.step; renderTour(); window.scrollTo({top:0, behavior:'smooth'}); return; }
+    const p = e.target.closest('[data-panel-go]'); if (p) showPanel(p.dataset.panelGo);
+  });
+
   // ----- 탭·이벤트 -----
   function showPanel(name){
     document.querySelectorAll('nav.top button').forEach(b => b.setAttribute('aria-selected', b.dataset.panel === name ? 'true' : 'false'));
@@ -335,6 +468,6 @@ footer{font-size:.8rem;color:var(--muted)}
   // 링크로 들어온 경우 (#run=...&tab=...&find=...)
   const h = new URLSearchParams(location.hash.slice(1));
   if (h.get('run') && byId[h.get('run')]) openRun(h.get('run'), h.get('tab'), h.get('find'));
-  else openRun(D.runs.find(r => r.name === 's-opus-P-2')?.id || D.runs[0].id, 'report', ''), showPanel('claims');
+  else { openRun(D.runs.find(r => r.name === 's-opus-P-2')?.id || D.runs[0].id, 'report', ''); showPanel('tour'); }
 })();
 </script>
