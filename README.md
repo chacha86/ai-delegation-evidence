@@ -12,6 +12,20 @@
 - **결과 격자** 탭: 실험별 통과(✓)/실패(✕)를 한눈에 보고, 칸을 누르면 그 채점 결과로 이동합니다.
 - 보고서의 표·제목을 보기 좋게 보여 주는 데 인터넷(cdnjs)을 씁니다. 오프라인이면 원문 그대로 보입니다.
 
+## 직접 돌려 보기: `replay/replay.py`
+
+AI가 만든 앱을 다시 띄우고, 동시에 요청을 보내 돈이 맞는지 화면에 보여 줍니다. JDK 21 · Python 3 · git 이 필요합니다.
+
+```
+python -X utf8 replay/replay.py s-opus-P-2     # Opus · 기획서 복붙 2회차 → 포인트가 사라짐
+python -X utf8 replay/replay.py s-opus-P-1     # Opus · 기획서 복붙 1회차 → 정상
+python -X utf8 replay/replay.py s-haiku-D-1    # Haiku · 개발자 보강 → 정상
+python -X utf8 replay/replay.py q-haiku-A-1    # Haiku · 결제 기능만 → 공짜 구매
+```
+
+- `replay/base`(원래 학습용 프로젝트)에 `runs/…/AI가-바꾼-코드.patch` 를 적용해 직접 빌드합니다. 이 저장소만 있으면 됩니다.
+- 처음 빌드는 몇 분 걸립니다. 기본 3번 반복하며, 동시성 버그는 매번 나타나지 않을 수 있습니다(예: `q-haiku-A-1` 은 3번 중 1번은 우연히 정상).
+
 ## 폴더 안내
 
 | 폴더 | 들어 있는 것 |
