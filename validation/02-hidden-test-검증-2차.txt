@@ -1,0 +1,15 @@
+ref-5: 합계 11/11
+mut-charge0: 합계 10/11 | 실패: P1 
+mut-nodup2: 합계 11/11 | 실패: 
+0
+mut-nodup2(제약도 제거): 합계 9/11 | 실패: P3 P7b 
+done
+refc gradle test rc=0
+ApiV1AdmMemberControllerTest 2 fail 0
+ApiV1MemberControllerTest 6 fail 0
+AuthTokenServiceTest 4 fail 0
+ApiV1CommentControllerTest 7 fail 0
+ApiV1AdmPostControllerTest 2 fail 0
+ApiV1PostControllerTest 15 fail 0
+PaymentPolicyTest 10 fail 0
+LazyLoadingTest 1 fail 0

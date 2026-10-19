@@ -1,0 +1,233 @@
+diff --git a/src/main/kotlin/com/rest1/domain/member/member/repository/MemberRepository.kt b/src/main/kotlin/com/rest1/domain/member/member/repository/MemberRepository.kt
+index 4627385..2f6077a 100644
+--- a/src/main/kotlin/com/rest1/domain/member/member/repository/MemberRepository.kt
++++ b/src/main/kotlin/com/rest1/domain/member/member/repository/MemberRepository.kt
+@@ -1,7 +1,11 @@
+ package com.rest1.domain.member.member.repository
+ 
+ import com.rest1.domain.member.member.entity.Member
++import jakarta.persistence.LockModeType
+ import org.springframework.data.jpa.repository.JpaRepository
++import org.springframework.data.jpa.repository.Lock
++import org.springframework.data.jpa.repository.Query
++import org.springframework.data.repository.query.Param
+ import java.util.Optional
+ 
+ interface MemberRepository : JpaRepository<Member, Long> {
+@@ -9,4 +13,9 @@ interface MemberRepository : JpaRepository<Member, Long> {
+     fun findByUsername(username: String): Optional<Member>
+ 
+     fun findByApiKey(apiKey: String): Optional<Member>
++
++    // 포인트 이동 시 회원 행을 id 순서로 잠근다(동시성 직렬화, 데드락 방지)
++    @Lock(LockModeType.PESSIMISTIC_WRITE)
++    @Query("select m from Member m where m.id in :ids order by m.id")
++    fun lockAllByIds(@Param("ids") ids: Collection<Long>): List<Member>
+ }
+diff --git a/src/main/kotlin/com/rest1/domain/point/controller/ApiV1PointController.kt b/src/main/kotlin/com/rest1/domain/point/controller/ApiV1PointController.kt
+new file mode 100644
+index 0000000..ea6c032
+--- /dev/null
++++ b/src/main/kotlin/com/rest1/domain/point/controller/ApiV1PointController.kt
+@@ -0,0 +1,45 @@
++package com.rest1.domain.point.controller
++
++import com.rest1.domain.point.service.PointService
++import com.rest1.global.rq.Rq
++import com.rest1.global.rsData.RsData
++import jakarta.validation.Valid
++import jakarta.validation.constraints.NotBlank
++import jakarta.validation.constraints.NotNull
++import org.springframework.web.bind.annotation.GetMapping
++import org.springframework.web.bind.annotation.PostMapping
++import org.springframework.web.bind.annotation.RequestBody
++import org.springframework.web.bind.annotation.RequestMapping
++import org.springframework.web.bind.annotation.RestController
++
++@RestController
++@RequestMapping("/api/v1/points")
++class ApiV1PointController(
++    private val pointService: PointService,
++    private val rq: Rq,
++) {
++    data class BalanceResBody(val balance: Long)
++
++    @GetMapping
++    fun balance(): RsData<BalanceResBody> =
++        RsData("200-1", "OK", BalanceResBody(pointService.balanceOf(rq.actor.id!!)))
++
++    data class ChargeReqBody(@field:NotNull val amount: Long?)
++
++    @PostMapping("/charge")
++    fun charge(@RequestBody @Valid reqBody: ChargeReqBody): RsData<BalanceResBody> =
++        RsData("200-1", "충전되었습니다.", BalanceResBody(pointService.charge(rq.actor.id!!, reqBody.amount!!)))
++
++    data class TransferReqBody(
++        @field:NotBlank val toUsername: String?,
++        @field:NotNull val amount: Long?,
++    )
++
++    data class TransferResBody(val amount: Long, val fee: Long, val balance: Long)
++
++    @PostMapping("/transfer")
++    fun transfer(@RequestBody @Valid reqBody: TransferReqBody): RsData<TransferResBody> {
++        val r = pointService.transfer(rq.actor.id!!, reqBody.toUsername!!, reqBody.amount!!)
++        return RsData("200-1", "선물했습니다.", TransferResBody(r.amount, r.fee, r.balance))
++    }
++}
+diff --git a/src/main/kotlin/com/rest1/domain/point/entity/PointAccount.kt b/src/main/kotlin/com/rest1/domain/point/entity/PointAccount.kt
+new file mode 100644
+index 0000000..cf8f31a
+--- /dev/null
++++ b/src/main/kotlin/com/rest1/domain/point/entity/PointAccount.kt
+@@ -0,0 +1,12 @@
++package com.rest1.domain.point.entity
++
++import com.rest1.global.jpa.entity.BaseEntity
++import jakarta.persistence.Column
++import jakarta.persistence.Entity
++
++@Entity
++class PointAccount(
++    @Column(unique = true)
++    val memberId: Long,
++    var balance: Long = 0,
++) : BaseEntity()
+diff --git a/src/main/kotlin/com/rest1/domain/point/entity/PointTransfer.kt b/src/main/kotlin/com/rest1/domain/point/entity/PointTransfer.kt
+new file mode 100644
+index 0000000..f2fca87
+--- /dev/null
++++ b/src/main/kotlin/com/rest1/domain/point/entity/PointTransfer.kt
+@@ -0,0 +1,17 @@
++package com.rest1.domain.point.entity
++
++import com.rest1.global.jpa.entity.BaseEntity
++import jakarta.persistence.Entity
++import jakarta.persistence.Index
++import jakarta.persistence.Table
++import java.time.LocalDate
++
++@Entity
++@Table(indexes = [Index(columnList = "fromMemberId, transferDate")])
++class PointTransfer(
++    val fromMemberId: Long,
++    val toMemberId: Long,
++    val amount: Long,
++    val fee: Long,
++    val transferDate: LocalDate,
++) : BaseEntity()
+diff --git a/src/main/kotlin/com/rest1/domain/point/repository/PointAccountRepository.kt b/src/main/kotlin/com/rest1/domain/point/repository/PointAccountRepository.kt
+new file mode 100644
+index 0000000..01f04de
+--- /dev/null
++++ b/src/main/kotlin/com/rest1/domain/point/repository/PointAccountRepository.kt
+@@ -0,0 +1,8 @@
++package com.rest1.domain.point.repository
++
++import com.rest1.domain.point.entity.PointAccount
++import org.springframework.data.jpa.repository.JpaRepository
++
++interface PointAccountRepository : JpaRepository<PointAccount, Long> {
++    fun findByMemberId(memberId: Long): PointAccount?
++}
+diff --git a/src/main/kotlin/com/rest1/domain/point/repository/PointTransferRepository.kt b/src/main/kotlin/com/rest1/domain/point/repository/PointTransferRepository.kt
+new file mode 100644
+index 0000000..64e13d0
+--- /dev/null
++++ b/src/main/kotlin/com/rest1/domain/point/repository/PointTransferRepository.kt
+@@ -0,0 +1,12 @@
++package com.rest1.domain.point.repository
++
++import com.rest1.domain.point.entity.PointTransfer
++import org.springframework.data.jpa.repository.JpaRepository
++import org.springframework.data.jpa.repository.Query
++import org.springframework.data.repository.query.Param
++import java.time.LocalDate
++
++interface PointTransferRepository : JpaRepository<PointTransfer, Long> {
++    @Query("select coalesce(sum(t.amount), 0) from PointTransfer t where t.fromMemberId = :memberId and t.transferDate = :date")
++    fun sumAmountByDate(@Param("memberId") memberId: Long, @Param("date") date: LocalDate): Long
++}
+diff --git a/src/main/kotlin/com/rest1/domain/point/service/PointService.kt b/src/main/kotlin/com/rest1/domain/point/service/PointService.kt
+new file mode 100644
+index 0000000..df4c92b
+--- /dev/null
++++ b/src/main/kotlin/com/rest1/domain/point/service/PointService.kt
+@@ -0,0 +1,77 @@
++package com.rest1.domain.point.service
++
++import com.rest1.domain.member.member.repository.MemberRepository
++import com.rest1.domain.point.entity.PointAccount
++import com.rest1.domain.point.entity.PointTransfer
++import com.rest1.domain.point.repository.PointAccountRepository
++import com.rest1.domain.point.repository.PointTransferRepository
++import com.rest1.global.exception.ServiceException
++import org.springframework.stereotype.Service
++import org.springframework.transaction.annotation.Transactional
++import java.time.LocalDate
++
++@Service
++class PointService(
++    private val memberRepository: MemberRepository,
++    private val accountRepository: PointAccountRepository,
++    private val transferRepository: PointTransferRepository,
++) {
++    companion object {
++        const val MIN_AMOUNT = 1_000L
++        const val DAILY_LIMIT = 10_000_000L
++        const val MAX_CHARGE = 100_000_000L
++
++        fun calcFee(amount: Long): Long = when {
++            amount <= 10_000L -> 500L
++            amount <= 100_000L -> 1_000L
++            else -> minOf(amount / 1_000L / 10L * 10L, 5_000L) // 0.1%, 10P 미만 절사
++        }
++    }
++
++    data class TransferResult(val amount: Long, val fee: Long, val balance: Long)
++
++    // 회원 행을 잠근 상태에서만 호출한다(계좌 최초 생성 경합 방지)
++    private fun accountOf(memberId: Long): PointAccount =
++        accountRepository.findByMemberId(memberId) ?: accountRepository.save(PointAccount(memberId))
++
++    @Transactional(readOnly = true)
++    fun balanceOf(memberId: Long): Long = accountRepository.findByMemberId(memberId)?.balance ?: 0L
++
++    @Transactional
++    fun charge(memberId: Long, amount: Long): Long {
++        if (amount < 1 || amount > MAX_CHARGE) throw ServiceException("400-3", "충전 금액은 1P 이상 ${MAX_CHARGE}P 이하여야 합니다.")
++        memberRepository.lockAllByIds(listOf(memberId)).firstOrNull() ?: throw NoSuchElementException()
++        val account = accountOf(memberId)
++        account.balance += amount
++        return account.balance
++    }
++
++    @Transactional
++    fun transfer(fromId: Long, toUsername: String, amount: Long): TransferResult {
++        if (amount < MIN_AMOUNT) throw ServiceException("400-4", "최소 선물 금액은 ${MIN_AMOUNT}P 입니다.")
++        if (amount > DAILY_LIMIT) throw ServiceException("400-5", "1일 선물 한도(${DAILY_LIMIT}P)를 초과했습니다.")
++
++        val to = memberRepository.findByUsername(toUsername).orElse(null)
++            ?: throw ServiceException("404-2", "존재하지 않는 아이디입니다.")
++        val toId = to.id!!
++        if (toId == fromId) throw ServiceException("400-6", "자기 자신에게는 선물할 수 없습니다.")
++
++        // 두 회원을 id 순서로 잠근다. 이후 보낸 사람 기준 검증/차감은 직렬화된다.
++        val locked = memberRepository.lockAllByIds(listOf(fromId, toId))
++        if (locked.size != 2) throw ServiceException("404-2", "존재하지 않는 아이디입니다.")
++
++        val today = LocalDate.now()
++        val used = transferRepository.sumAmountByDate(fromId, today)
++        if (used + amount > DAILY_LIMIT) throw ServiceException("400-5", "1일 선물 한도(${DAILY_LIMIT}P)를 초과했습니다.")
++
++        val fee = calcFee(amount)
++        val from = accountOf(fromId)
++        if (from.balance < amount + fee) throw ServiceException("400-7", "포인트 잔액이 부족합니다.")
++        val target = accountOf(toId)
++
++        from.balance -= amount + fee
++        target.balance += amount
++        transferRepository.save(PointTransfer(fromId, toId, amount, fee, today))
++        return TransferResult(amount, fee, from.balance)
++    }
++}

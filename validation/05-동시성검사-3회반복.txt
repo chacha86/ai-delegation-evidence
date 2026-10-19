@@ -1,0 +1,5 @@
+s-opus-P-2 C1: FAIL FAIL FAIL
+s-opus-P-1 C1: PASS PASS PASS
+s-haiku-D-1 C1: PASS PASS PASS
+s-sonnet-D-1 C1: PASS PASS PASS
+done

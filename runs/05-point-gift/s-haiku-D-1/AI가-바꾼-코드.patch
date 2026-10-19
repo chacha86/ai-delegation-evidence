@@ -1,0 +1,365 @@
+diff --git a/src/main/kotlin/com/rest1/domain/member/member/entity/Member.kt b/src/main/kotlin/com/rest1/domain/member/member/entity/Member.kt
+index f9d0a84..eb094a3 100644
+--- a/src/main/kotlin/com/rest1/domain/member/member/entity/Member.kt
++++ b/src/main/kotlin/com/rest1/domain/member/member/entity/Member.kt
+@@ -16,6 +16,11 @@ class Member(
+     @Column(unique = true)
+     var apiKey: String?,
+ ) : BaseEntity() {
++    // 포인트 잔액. 기존 행은 0 으로 채워지도록 DB 기본값을 둔다.
++    @Column(nullable = false, columnDefinition = "BIGINT DEFAULT 0 NOT NULL")
++    var point: Long = 0L
++        protected set
++
+     constructor(username: String, password: String, nickname: String) :
+             this(username, password, nickname, UUID.randomUUID().toString())
+ 
+@@ -32,6 +37,14 @@ class Member(
+         this.apiKey = apiKey
+     }
+ 
++    fun addPoint(amount: Long) {
++        point += amount
++    }
++
++    fun subtractPoint(amount: Long) {
++        point -= amount
++    }
++
+     val isAdmin: Boolean
+         get() = username == "admin"
+ 
+diff --git a/src/main/kotlin/com/rest1/domain/member/member/repository/MemberRepository.kt b/src/main/kotlin/com/rest1/domain/member/member/repository/MemberRepository.kt
+index 4627385..916bcae 100644
+--- a/src/main/kotlin/com/rest1/domain/member/member/repository/MemberRepository.kt
++++ b/src/main/kotlin/com/rest1/domain/member/member/repository/MemberRepository.kt
+@@ -1,7 +1,11 @@
+ package com.rest1.domain.member.member.repository
+ 
+ import com.rest1.domain.member.member.entity.Member
++import jakarta.persistence.LockModeType
+ import org.springframework.data.jpa.repository.JpaRepository
++import org.springframework.data.jpa.repository.Lock
++import org.springframework.data.jpa.repository.Query
++import org.springframework.data.repository.query.Param
+ import java.util.Optional
+ 
+ interface MemberRepository : JpaRepository<Member, Long> {
+@@ -9,4 +13,13 @@ interface MemberRepository : JpaRepository<Member, Long> {
+     fun findByUsername(username: String): Optional<Member>
+ 
+     fun findByApiKey(apiKey: String): Optional<Member>
++
++    // 엔티티를 먼저 올리지 않고 id 만 조회한다. 먼저 올리면 잠금 조회가 잠금 전 값을 그대로 돌려준다.
++    @Query("select m.id from Member m where m.username = :username")
++    fun findIdByUsername(@Param("username") username: String): Long?
++
++    // 포인트 변경 시 행 잠금(SELECT ... FOR UPDATE)으로 동시 요청을 직렬화한다
++    @Lock(LockModeType.PESSIMISTIC_WRITE)
++    @Query("select m from Member m where m.id = :id")
++    fun findByIdForUpdate(@Param("id") id: Long): Optional<Member>
+ }
+diff --git a/src/main/kotlin/com/rest1/domain/point/point/controller/ApiV1PointController.kt b/src/main/kotlin/com/rest1/domain/point/point/controller/ApiV1PointController.kt
+new file mode 100644
+index 0000000..b11acb5
+--- /dev/null
++++ b/src/main/kotlin/com/rest1/domain/point/point/controller/ApiV1PointController.kt
+@@ -0,0 +1,99 @@
++package com.rest1.domain.point.point.controller
++
++import com.rest1.domain.point.point.service.PointService
++import com.rest1.global.rq.Rq
++import com.rest1.global.rsData.RsData
++import jakarta.validation.Valid
++import jakarta.validation.constraints.Min
++import jakarta.validation.constraints.NotBlank
++import jakarta.validation.constraints.NotNull
++import org.springframework.web.bind.annotation.GetMapping
++import org.springframework.web.bind.annotation.PostMapping
++import org.springframework.web.bind.annotation.RequestBody
++import org.springframework.web.bind.annotation.RequestMapping
++import org.springframework.web.bind.annotation.RestController
++
++@RestController
++@RequestMapping("/api/v1/points")
++class ApiV1PointController(
++    private val pointService: PointService,
++    private val rq: Rq,
++) {
++    // 요청 바디 필드는 nullable 로 둔다. 이유는 ApiV1MemberController.JoinReqBody 주석 참고
++    data class ChargeReqBody(
++        @field:NotNull
++        @field:Min(1)
++        val amount: Long?,
++    )
++
++    data class ChargeResBody(
++        val balance: Long,
++    )
++
++    // 테스트용 충전
++    @PostMapping("/charge")
++    fun charge(
++        @RequestBody @Valid reqBody: ChargeReqBody,
++    ): RsData<ChargeResBody> {
++        val balance = pointService.charge(rq.actor.id!!, reqBody.amount!!)
++
++        return RsData(
++            "200-1",
++            "${reqBody.amount}P 가 충전되었습니다.",
++            ChargeResBody(balance),
++        )
++    }
++
++    data class BalanceResBody(
++        val balance: Long,
++    )
++
++    @GetMapping
++    fun balance(): RsData<BalanceResBody> {
++        val balance = pointService.balance(rq.actor.id!!)
++
++        return RsData(
++            "200-1",
++            "OK",
++            BalanceResBody(balance),
++        )
++    }
++
++    data class TransferReqBody(
++        @field:NotBlank
++        val toUsername: String?,
++        @field:NotNull
++        @field:Min(1)
++        val amount: Long?,
++    )
++
++    data class TransferResBody(
++        val giftId: Long,
++        val toUsername: String,
++        val amount: Long,
++        val fee: Long,
++        val totalPaid: Long,
++        val balance: Long,
++    )
++
++    @PostMapping("/transfer")
++    fun transfer(
++        @RequestBody @Valid reqBody: TransferReqBody,
++    ): RsData<TransferResBody> {
++        val amount = reqBody.amount!!
++        val result = pointService.gift(rq.actor.id!!, reqBody.toUsername!!, amount)
++
++        return RsData(
++            "201-1",
++            "${result.toUsername}님에게 ${amount}P 를 선물했습니다.",
++            TransferResBody(
++                giftId = result.gift.id!!,
++                toUsername = result.toUsername,
++                amount = result.gift.amount,
++                fee = result.gift.fee,
++                totalPaid = result.gift.amount + result.gift.fee,
++                balance = result.senderBalance,
++            ),
++        )
++    }
++}
+diff --git a/src/main/kotlin/com/rest1/domain/point/point/entity/PointGift.kt b/src/main/kotlin/com/rest1/domain/point/point/entity/PointGift.kt
+new file mode 100644
+index 0000000..86db416
+--- /dev/null
++++ b/src/main/kotlin/com/rest1/domain/point/point/entity/PointGift.kt
+@@ -0,0 +1,25 @@
++package com.rest1.domain.point.point.entity
++
++import com.rest1.global.jpa.entity.BaseEntity
++import jakarta.persistence.Column
++import jakarta.persistence.Entity
++import jakarta.persistence.Index
++import jakarta.persistence.Table
++import java.time.LocalDate
++
++// 성공한 선물만 기록한다. 1일 한도 집계에 사용한다.
++@Entity
++@Table(indexes = [Index(name = "idx_point_gift_sender_date", columnList = "senderId, giftDate")])
++class PointGift(
++    @Column(nullable = false)
++    val senderId: Long,
++    @Column(nullable = false)
++    val receiverId: Long,
++    // 선물 금액(받는 사람이 받는 금액, 수수료 제외)
++    @Column(nullable = false)
++    val amount: Long,
++    @Column(nullable = false)
++    val fee: Long,
++    @Column(nullable = false)
++    val giftDate: LocalDate,
++) : BaseEntity()
+diff --git a/src/main/kotlin/com/rest1/domain/point/point/policy/PointGiftPolicy.kt b/src/main/kotlin/com/rest1/domain/point/point/policy/PointGiftPolicy.kt
+new file mode 100644
+index 0000000..0bd5ce8
+--- /dev/null
++++ b/src/main/kotlin/com/rest1/domain/point/point/policy/PointGiftPolicy.kt
+@@ -0,0 +1,25 @@
++package com.rest1.domain.point.point.policy
++
++import java.time.LocalDate
++import java.time.ZoneId
++
++object PointGiftPolicy {
++    const val MIN_GIFT_AMOUNT = 1_000L
++    const val DAILY_GIFT_LIMIT = 10_000_000L
++    const val MAX_FEE = 5_000L
++
++    // 1일 한도 기준 날짜는 한국 시간(KST)으로 본다
++    val GIFT_ZONE: ZoneId = ZoneId.of("Asia/Seoul")
++
++    fun today(): LocalDate = LocalDate.now(GIFT_ZONE)
++
++    // 1만P 이하 500P, 10만P 이하 1,000P, 10만P 초과 0.1% (최대 5,000P). 10P 미만은 절사한다.
++    fun fee(amount: Long): Long {
++        val raw = when {
++            amount <= 10_000L -> 500L
++            amount <= 100_000L -> 1_000L
++            else -> minOf(amount / 1_000L, MAX_FEE)
++        }
++        return raw / 10L * 10L
++    }
++}
+diff --git a/src/main/kotlin/com/rest1/domain/point/point/repository/PointGiftRepository.kt b/src/main/kotlin/com/rest1/domain/point/point/repository/PointGiftRepository.kt
+new file mode 100644
+index 0000000..78a5f10
+--- /dev/null
++++ b/src/main/kotlin/com/rest1/domain/point/point/repository/PointGiftRepository.kt
+@@ -0,0 +1,16 @@
++package com.rest1.domain.point.point.repository
++
++import com.rest1.domain.point.point.entity.PointGift
++import org.springframework.data.jpa.repository.JpaRepository
++import org.springframework.data.jpa.repository.Query
++import org.springframework.data.repository.query.Param
++import java.time.LocalDate
++
++interface PointGiftRepository : JpaRepository<PointGift, Long> {
++    // 해당 날짜에 보낸 선물 금액 합계(수수료 제외). 기록이 없으면 null
++    @Query("select sum(g.amount) from PointGift g where g.senderId = :senderId and g.giftDate = :giftDate")
++    fun sumAmountBySenderAndDate(
++        @Param("senderId") senderId: Long,
++        @Param("giftDate") giftDate: LocalDate,
++    ): Long?
++}
+diff --git a/src/main/kotlin/com/rest1/domain/point/point/service/PointService.kt b/src/main/kotlin/com/rest1/domain/point/point/service/PointService.kt
+new file mode 100644
+index 0000000..7c99920
+--- /dev/null
++++ b/src/main/kotlin/com/rest1/domain/point/point/service/PointService.kt
+@@ -0,0 +1,78 @@
++package com.rest1.domain.point.point.service
++
++import com.rest1.domain.member.member.repository.MemberRepository
++import com.rest1.domain.point.point.entity.PointGift
++import com.rest1.domain.point.point.policy.PointGiftPolicy
++import com.rest1.domain.point.point.repository.PointGiftRepository
++import com.rest1.global.exception.ServiceException
++import org.springframework.stereotype.Service
++import org.springframework.transaction.annotation.Transactional
++
++@Service
++class PointService(
++    private val memberRepository: MemberRepository,
++    private val pointGiftRepository: PointGiftRepository,
++) {
++    data class GiftResult(
++        val gift: PointGift,
++        val toUsername: String,
++        val senderBalance: Long,
++    )
++
++    @Transactional
++    fun charge(memberId: Long, amount: Long): Long {
++        val member = memberRepository.findByIdForUpdate(memberId).orElseThrow { NoSuchElementException() }
++        member.addPoint(amount)
++
++        return member.point
++    }
++
++    @Transactional(readOnly = true)
++    fun balance(memberId: Long): Long {
++        return memberRepository.findById(memberId).orElseThrow { NoSuchElementException() }.point
++    }
++
++    // 보내는 사람은 금액+수수료를 내고, 받는 사람은 금액 전액을 받는다.
++    // 실패하면 예외로 롤백되며, 잔액 변경은 모든 검증을 통과한 뒤에만 한다.
++    @Transactional
++    fun gift(senderId: Long, toUsername: String, amount: Long): GiftResult {
++        if (amount < PointGiftPolicy.MIN_GIFT_AMOUNT) {
++            throw ServiceException("400-3", "최소 선물 금액은 1,000P 입니다.")
++        }
++
++        // 받는 사람은 id 만 조회한다. 엔티티를 먼저 올리면 잠금 조회가 잠금 전 값을 돌려준다.
++        val receiverId = memberRepository.findIdByUsername(toUsername)
++            ?: throw ServiceException("404-2", "존재하지 않는 아이디입니다.")
++
++        if (receiverId == senderId) {
++            throw ServiceException("400-4", "자기 자신에게는 선물할 수 없습니다.")
++        }
++
++        // 교착을 피하려고 항상 id 오름차순으로 잠근다. 보내는 사람 행 잠금이 같은 사람의 선물을 직렬화한다.
++        val locked = listOf(senderId, receiverId).sorted().associateWith { id ->
++            memberRepository.findByIdForUpdate(id).orElseThrow { NoSuchElementException() }
++        }
++        val sender = locked.getValue(senderId)
++        val receiver = locked.getValue(receiverId)
++
++        val fee = PointGiftPolicy.fee(amount)
++        val totalCost = amount + fee
++
++        if (sender.point < totalCost) {
++            throw ServiceException("400-5", "포인트가 부족합니다.")
++        }
++
++        val today = PointGiftPolicy.today()
++        val sentToday = pointGiftRepository.sumAmountBySenderAndDate(senderId, today) ?: 0L
++        if (sentToday + amount > PointGiftPolicy.DAILY_GIFT_LIMIT) {
++            throw ServiceException("400-6", "1일 선물 한도(1,000만P)를 초과합니다.")
++        }
++
++        sender.subtractPoint(totalCost)
++        receiver.addPoint(amount)
++
++        val gift = pointGiftRepository.save(PointGift(senderId, receiverId, amount, fee, today))
++
++        return GiftResult(gift, receiver.username, sender.point)
++    }
++}
+diff --git a/src/test/kotlin/com/rest1/domain/point/point/policy/PointGiftFeeTest.kt b/src/test/kotlin/com/rest1/domain/point/point/policy/PointGiftFeeTest.kt
+new file mode 100644
+index 0000000..30cc5fe
+--- /dev/null
++++ b/src/test/kotlin/com/rest1/domain/point/point/policy/PointGiftFeeTest.kt
+@@ -0,0 +1,25 @@
++package com.rest1.domain.point.point.policy
++
++import org.assertj.core.api.Assertions.assertThat
++import org.junit.jupiter.api.Test
++
++class PointGiftFeeTest {
++    @Test
++    fun `구간별 수수료와 경계값`() {
++        assertThat(PointGiftPolicy.fee(1_000)).isEqualTo(500)
++        assertThat(PointGiftPolicy.fee(10_000)).isEqualTo(500)
++        assertThat(PointGiftPolicy.fee(10_001)).isEqualTo(1_000)
++        assertThat(PointGiftPolicy.fee(100_000)).isEqualTo(1_000)
++        // 10만P 초과부터 0.1%. 기획 보강 사항대로 적용하므로 수수료가 1,000P 에서 100P 로 내려간다.
++        assertThat(PointGiftPolicy.fee(100_001)).isEqualTo(100)
++    }
++
++    @Test
++    fun `0_1퍼센트 계산, 10P 미만 절사, 최대 5천P`() {
++        assertThat(PointGiftPolicy.fee(345_670)).isEqualTo(340)
++        assertThat(PointGiftPolicy.fee(1_000_000)).isEqualTo(1_000)
++        assertThat(PointGiftPolicy.fee(4_999_999)).isEqualTo(4_990)
++        assertThat(PointGiftPolicy.fee(5_000_000)).isEqualTo(5_000)
++        assertThat(PointGiftPolicy.fee(10_000_000)).isEqualTo(5_000)
++    }
++}

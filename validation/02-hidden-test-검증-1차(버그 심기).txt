@@ -1,0 +1,8 @@
+ref-3: 합계 11/11
+ref-4: 합계 11/11
+mut-nolock: 합계 9/11 | 실패: P7a P7c 
+mut-nodup: 합계 11/11 | 실패: 
+mut-leak: 합계 10/11 | 실패: P5 
+mut-nodeposit: 합계 10/11 | 실패: P6 
+mut-charge0: 합계 11/11 | 실패: 
+done

@@ -1,0 +1,8 @@
+ref-2: 합계 12/13
+mut-a1-boundary: 합계 12/13 | 실패: F3 
+mut-a2-feeFromAmount: 합계 2/13 | 실패: T0 F1 F2 F4 F5 L1 F3 F6 L3 L4 C1 
+mut-a3-limitWithFee: 합계 12/13 | 실패: L4 
+mut-a4-balanceAmountOnly: 합계 12/13 | 실패: L3 
+mut-nolock: 합계 13/13 | 실패: 
+mut-nofloor: 합계 12/13 | 실패: F4 
+done

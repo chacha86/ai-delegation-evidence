@@ -1,0 +1,17 @@
+ref2-1: 합계 14/14
+ref2-2: 합계 14/14
+ref(v1, 회사 규칙 없음): 합계 11/14 | 실패: R1 R2 R3 
+mut2-nofee: 합계 13/14 | 실패: R1 
+mut2-nolimit: 합계 13/14 | 실패: R2 
+mut2-nounit: 합계 13/14 | 실패: R3 
+3:    url: jdbc:h2:mem:db_test_${random.uuid};MODE=MySQL
+refc2 gradle test rc=0
+ApiV1AdmMemberControllerTest 2 fail 0
+ApiV1MemberControllerTest 6 fail 0
+AuthTokenServiceTest 4 fail 0
+ApiV1CommentControllerTest 7 fail 0
+ApiV1AdmPostControllerTest 2 fail 0
+ApiV1PostControllerTest 15 fail 0
+PaymentPolicyTest 12 fail 0
+LazyLoadingTest 1 fail 0
+done

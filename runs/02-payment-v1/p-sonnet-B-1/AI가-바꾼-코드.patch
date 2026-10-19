@@ -1,0 +1,736 @@
+diff --git a/src/main/kotlin/com/rest1/domain/member/member/controller/ApiV1WalletController.kt b/src/main/kotlin/com/rest1/domain/member/member/controller/ApiV1WalletController.kt
+new file mode 100644
+index 0000000..e5404ea
+--- /dev/null
++++ b/src/main/kotlin/com/rest1/domain/member/member/controller/ApiV1WalletController.kt
+@@ -0,0 +1,45 @@
++package com.rest1.domain.member.member.controller
++
++import com.rest1.domain.post.post.service.PurchaseService
++import com.rest1.global.rq.Rq
++import com.rest1.global.rsData.RsData
++import io.swagger.v3.oas.annotations.Operation
++import io.swagger.v3.oas.annotations.security.SecurityRequirement
++import io.swagger.v3.oas.annotations.tags.Tag
++import jakarta.validation.Valid
++import jakarta.validation.constraints.NotNull
++import org.springframework.web.bind.annotation.GetMapping
++import org.springframework.web.bind.annotation.PostMapping
++import org.springframework.web.bind.annotation.RequestBody
++import org.springframework.web.bind.annotation.RequestMapping
++import org.springframework.web.bind.annotation.RestController
++
++@RestController
++@RequestMapping("/api/v1/wallet")
++@Tag(name = "ApiV1WalletController", description = "지갑 API")
++@SecurityRequirement(name = "bearerAuth")
++class ApiV1WalletController(
++    private val purchaseService: PurchaseService,
++    private val rq: Rq,
++) {
++    data class WalletDto(val balance: Long)
++
++    data class ChargeReqBody(
++        @field:NotNull
++        val amount: Long?,
++    )
++
++    @GetMapping
++    @Operation(summary = "잔액 조회")
++    fun getWallet(): WalletDto = WalletDto(purchaseService.balanceOf(rq.actor.id!!))
++
++    @PostMapping("/charge")
++    @Operation(summary = "충전")
++    fun charge(
++        @RequestBody @Valid reqBody: ChargeReqBody,
++    ): RsData<WalletDto> {
++        val balance = purchaseService.charge(rq.actor.id!!, reqBody.amount!!)
++
++        return RsData("200-1", "충전되었습니다.", WalletDto(balance))
++    }
++}
+diff --git a/src/main/kotlin/com/rest1/domain/member/member/entity/Member.kt b/src/main/kotlin/com/rest1/domain/member/member/entity/Member.kt
+index f9d0a84..e33d288 100644
+--- a/src/main/kotlin/com/rest1/domain/member/member/entity/Member.kt
++++ b/src/main/kotlin/com/rest1/domain/member/member/entity/Member.kt
+@@ -3,11 +3,14 @@ package com.rest1.domain.member.member.entity
+ import com.rest1.global.jpa.entity.BaseEntity
+ import jakarta.persistence.Column
+ import jakarta.persistence.Entity
++import org.hibernate.annotations.ColumnDefault
++import org.hibernate.annotations.DynamicUpdate
+ import org.springframework.security.core.GrantedAuthority
+ import org.springframework.security.core.authority.SimpleGrantedAuthority
+ import java.util.UUID
+ 
+ @Entity
++@DynamicUpdate
+ class Member(
+     @Column(unique = true)
+     var username: String,
+@@ -25,6 +28,12 @@ class Member(
+         this.id = id
+     }
+ 
++    // 잔액은 MemberRepository 의 원자적 UPDATE 쿼리로만 바꾼다 (updatable=false: 엔티티 flush 가 덮어쓰지 못하게)
++    @ColumnDefault("0")
++    @Column(updatable = false, nullable = false)
++    var balance: Long = 0
++        protected set
++
+     val name: String
+         get() = nickname
+ 
+diff --git a/src/main/kotlin/com/rest1/domain/member/member/repository/MemberRepository.kt b/src/main/kotlin/com/rest1/domain/member/member/repository/MemberRepository.kt
+index 4627385..fab0dbc 100644
+--- a/src/main/kotlin/com/rest1/domain/member/member/repository/MemberRepository.kt
++++ b/src/main/kotlin/com/rest1/domain/member/member/repository/MemberRepository.kt
+@@ -2,6 +2,9 @@ package com.rest1.domain.member.member.repository
+ 
+ import com.rest1.domain.member.member.entity.Member
+ import org.springframework.data.jpa.repository.JpaRepository
++import org.springframework.data.jpa.repository.Modifying
++import org.springframework.data.jpa.repository.Query
++import org.springframework.data.repository.query.Param
+ import java.util.Optional
+ 
+ interface MemberRepository : JpaRepository<Member, Long> {
+@@ -9,4 +12,17 @@ interface MemberRepository : JpaRepository<Member, Long> {
+     fun findByUsername(username: String): Optional<Member>
+ 
+     fun findByApiKey(apiKey: String): Optional<Member>
++
++    @Query("select m.balance from Member m where m.id = :id")
++    fun findBalanceById(@Param("id") id: Long): Long?
++
++    // 조건부 원자적 증가: balance <= room 일 때만 (오버플로 방지)
++    @Modifying(flushAutomatically = true)
++    @Query("update Member m set m.balance = m.balance + :amount where m.id = :id and m.balance <= :room")
++    fun addBalance(@Param("id") id: Long, @Param("amount") amount: Long, @Param("room") room: Long): Int
++
++    // 조건부 원자적 차감: 잔액이 충분할 때만 (음수 불가)
++    @Modifying(flushAutomatically = true)
++    @Query("update Member m set m.balance = m.balance - :amount where m.id = :id and m.balance >= :amount")
++    fun subtractBalance(@Param("id") id: Long, @Param("amount") amount: Long): Int
+ }
+diff --git a/src/main/kotlin/com/rest1/domain/post/post/controller/ApiV1PostController.kt b/src/main/kotlin/com/rest1/domain/post/post/controller/ApiV1PostController.kt
+index 36cbc5d..2fe1365 100644
+--- a/src/main/kotlin/com/rest1/domain/post/post/controller/ApiV1PostController.kt
++++ b/src/main/kotlin/com/rest1/domain/post/post/controller/ApiV1PostController.kt
+@@ -2,12 +2,16 @@ package com.rest1.domain.post.post.controller
+ 
+ import com.rest1.domain.post.post.dto.PostDto
+ import com.rest1.domain.post.post.service.PostService
++import com.rest1.domain.post.post.service.PurchaseService
++import com.rest1.global.exception.ServiceException
+ import com.rest1.global.rq.Rq
+ import com.rest1.global.rsData.RsData
+ import io.swagger.v3.oas.annotations.Operation
+ import io.swagger.v3.oas.annotations.security.SecurityRequirement
+ import io.swagger.v3.oas.annotations.tags.Tag
+ import jakarta.validation.Valid
++import jakarta.validation.constraints.Max
++import jakarta.validation.constraints.Min
+ import jakarta.validation.constraints.NotBlank
+ import jakarta.validation.constraints.Size
+ import org.springframework.transaction.annotation.Transactional
+@@ -26,13 +30,22 @@ import org.springframework.web.bind.annotation.RestController
+ @SecurityRequirement(name = "bearerAuth")
+ class ApiV1PostController(
+     private val postService: PostService,
++    private val purchaseService: PurchaseService,
+     private val rq: Rq,
+ ) {
+     @GetMapping
+     @Transactional(readOnly = true)
+     @Operation(summary = "글 다건 조회")
+     fun getItems(): List<PostDto> {
+-        return postService.findAll().reversed().map(::PostDto)
++        val viewerId = rq.actorOrNull?.id
++        val purchased = purchaseService.purchasedPostIds(viewerId)
++
++        return postService.findAll().reversed().map { post ->
++            val readable = !purchaseService.isPaid(post) ||
++                    (viewerId != null && (post.author.id == viewerId || post.id in purchased))
++
++            PostDto(post, readable)
++        }
+     }
+ 
+     @GetMapping("/{id}")
+@@ -43,7 +56,7 @@ class ApiV1PostController(
+     ): PostDto {
+         val post = postService.findById(id) ?: throw NoSuchElementException()
+ 
+-        return PostDto(post)
++        return PostDto(post, purchaseService.canRead(post, rq.actorOrNull?.id))
+     }
+ 
+     @DeleteMapping("/{id}")
+@@ -72,6 +85,10 @@ class ApiV1PostController(
+         @field:NotBlank
+         @field:Size(min = 2, max = 100)
+         val content: String?,
++        // 생략하면 0(무료). 0보다 크면 유료 글
++        @field:Min(0)
++        @field:Max(PurchaseService.MAX_AMOUNT)
++        val price: Long? = 0,
+     )
+ 
+     data class PostWriteResBody(
+@@ -85,13 +102,13 @@ class ApiV1PostController(
+         @RequestBody @Valid reqBody: PostWriteReqBody,
+     ): RsData<PostWriteResBody> {
+         val actor = rq.actor
+-        val post = postService.write(actor, reqBody.title!!, reqBody.content!!)
++        val post = postService.write(actor, reqBody.title!!, reqBody.content!!, reqBody.price ?: 0)
+ 
+         return RsData(
+             "201-1",
+             "${post.id}번 게시물이 생성되었습니다.",
+             PostWriteResBody(
+-                PostDto(post),
++                PostDto(post, true),
+             ),
+         )
+     }
+@@ -124,4 +141,44 @@ class ApiV1PostController(
+             "${id}번 게시물이 수정되었습니다.",
+         )
+     }
++
++    data class PurchaseResBody(
++        val balance: Long,
++    )
++
++    @PostMapping("/{id}/purchase")
++    @Operation(summary = "글 구매")
++    fun purchase(
++        @PathVariable id: Long,
++    ): RsData<PurchaseResBody> {
++        val actor = rq.actor
++        val post = postService.findById(id) ?: throw NoSuchElementException()
++
++        purchaseService.purchase(actor.id!!, post)
++
++        return RsData(
++            "200-1",
++            "${id}번 게시물을 구매했습니다.",
++            PurchaseResBody(purchaseService.balanceOf(actor.id!!)),
++        )
++    }
++
++    data class ContentResBody(
++        val content: String,
++    )
++
++    @GetMapping("/{id}/content")
++    @Transactional(readOnly = true)
++    @Operation(summary = "글 본문 조회")
++    fun getContent(
++        @PathVariable id: Long,
++    ): ContentResBody {
++        val post = postService.findById(id) ?: throw NoSuchElementException()
++
++        if (!purchaseService.canRead(post, rq.actor.id)) {
++            throw ServiceException("403-3", "구매한 사용자만 볼 수 있습니다.")
++        }
++
++        return ContentResBody(post.content)
++    }
+ }
+diff --git a/src/main/kotlin/com/rest1/domain/post/post/dto/PostDto.kt b/src/main/kotlin/com/rest1/domain/post/post/dto/PostDto.kt
+index 9e5a29d..bd0bf50 100644
+--- a/src/main/kotlin/com/rest1/domain/post/post/dto/PostDto.kt
++++ b/src/main/kotlin/com/rest1/domain/post/post/dto/PostDto.kt
+@@ -3,22 +3,27 @@ package com.rest1.domain.post.post.dto
+ import com.rest1.domain.post.post.entity.Post
+ import java.time.LocalDateTime
+ 
++// content 는 열람 권한이 없는 유료 글이면 null (읽을 수 없는 사람에게 본문을 내려보내지 않는다)
+ data class PostDto(
+     val id: Long?,
+     val createDate: LocalDateTime?,
+     val modifyDate: LocalDateTime?,
+     val title: String,
+-    val content: String,
++    val content: String?,
+     val authorId: Long?,
+     val authorName: String,
++    val price: Long,
++    val readable: Boolean,
+ ) {
+-    constructor(post: Post) : this(
++    constructor(post: Post, readable: Boolean) : this(
+         post.id,
+         post.createDate,
+         post.modifyDate,
+         post.title,
+-        post.content,
++        if (readable) post.content else null,
+         post.author.id,
+         post.author.name,
++        post.price,
++        readable,
+     )
+ }
+diff --git a/src/main/kotlin/com/rest1/domain/post/post/entity/Post.kt b/src/main/kotlin/com/rest1/domain/post/post/entity/Post.kt
+index 6a9e66f..dd14688 100644
+--- a/src/main/kotlin/com/rest1/domain/post/post/entity/Post.kt
++++ b/src/main/kotlin/com/rest1/domain/post/post/entity/Post.kt
+@@ -5,10 +5,12 @@ import com.rest1.domain.post.comment.entity.Comment
+ import com.rest1.global.exception.ServiceException
+ import com.rest1.global.jpa.entity.BaseEntity
+ import jakarta.persistence.CascadeType
++import jakarta.persistence.Column
+ import jakarta.persistence.Entity
+ import jakarta.persistence.FetchType
+ import jakarta.persistence.ManyToOne
+ import jakarta.persistence.OneToMany
++import org.hibernate.annotations.ColumnDefault
+ import java.util.Optional
+ 
+ @Entity
+@@ -17,6 +19,9 @@ class Post(
+     var author: Member,
+     var title: String,
+     var content: String,
++    @ColumnDefault("0")
++    @Column(nullable = false)
++    val price: Long = 0,
+ ) : BaseEntity() {
+     @OneToMany(
+         mappedBy = "post",
+diff --git a/src/main/kotlin/com/rest1/domain/post/post/entity/Purchase.kt b/src/main/kotlin/com/rest1/domain/post/post/entity/Purchase.kt
+new file mode 100644
+index 0000000..6b67b30
+--- /dev/null
++++ b/src/main/kotlin/com/rest1/domain/post/post/entity/Purchase.kt
+@@ -0,0 +1,16 @@
++package com.rest1.domain.post.post.entity
++
++import com.rest1.global.jpa.entity.BaseEntity
++import jakarta.persistence.Entity
++import jakarta.persistence.Table
++import jakarta.persistence.UniqueConstraint
++
++// 같은 글은 한 번만 살 수 있다: (postId, buyerId) 유니크 제약이 동시 중복 구매의 최종 방어선.
++// 글이 삭제돼도 구매 기록 정리가 단순하도록 FK 대신 id 값만 가진다.
++@Entity
++@Table(uniqueConstraints = [UniqueConstraint(columnNames = ["postId", "buyerId"])])
++class Purchase(
++    val postId: Long,
++    val buyerId: Long,
++    val price: Long,
++) : BaseEntity()
+diff --git a/src/main/kotlin/com/rest1/domain/post/post/repository/PurchaseRepository.kt b/src/main/kotlin/com/rest1/domain/post/post/repository/PurchaseRepository.kt
+new file mode 100644
+index 0000000..f02d705
+--- /dev/null
++++ b/src/main/kotlin/com/rest1/domain/post/post/repository/PurchaseRepository.kt
+@@ -0,0 +1,20 @@
++package com.rest1.domain.post.post.repository
++
++import com.rest1.domain.post.post.entity.Purchase
++import org.springframework.data.jpa.repository.JpaRepository
++import org.springframework.data.jpa.repository.Modifying
++import org.springframework.data.jpa.repository.Query
++import org.springframework.data.repository.query.Param
++import org.springframework.transaction.annotation.Transactional
++
++interface PurchaseRepository : JpaRepository<Purchase, Long> {
++    fun existsByPostIdAndBuyerId(postId: Long, buyerId: Long): Boolean
++
++    @Query("select p.postId from Purchase p where p.buyerId = :buyerId")
++    fun findPostIdsByBuyerId(@Param("buyerId") buyerId: Long): List<Long>
++
++    @Modifying(flushAutomatically = true)
++    @Transactional
++    @Query("delete from Purchase p where p.postId = :postId")
++    fun deleteByPostId(@Param("postId") postId: Long): Int
++}
+diff --git a/src/main/kotlin/com/rest1/domain/post/post/service/PostService.kt b/src/main/kotlin/com/rest1/domain/post/post/service/PostService.kt
+index 39973b3..f5aff44 100644
+--- a/src/main/kotlin/com/rest1/domain/post/post/service/PostService.kt
++++ b/src/main/kotlin/com/rest1/domain/post/post/service/PostService.kt
+@@ -4,15 +4,17 @@ import com.rest1.domain.member.member.entity.Member
+ import com.rest1.domain.post.comment.entity.Comment
+ import com.rest1.domain.post.post.entity.Post
+ import com.rest1.domain.post.post.repository.PostRepository
++import com.rest1.domain.post.post.repository.PurchaseRepository
+ import org.springframework.data.repository.findByIdOrNull
+ import org.springframework.stereotype.Service
+ 
+ @Service
+ class PostService(
+     private val postRepository: PostRepository,
++    private val purchaseRepository: PurchaseRepository,
+ ) {
+-    fun write(author: Member, title: String, content: String): Post {
+-        return postRepository.save(Post(author, title, content))
++    fun write(author: Member, title: String, content: String, price: Long = 0): Post {
++        return postRepository.save(Post(author, title, content, price))
+     }
+ 
+     fun count(): Long = postRepository.count()
+@@ -38,6 +40,7 @@ class PostService(
+     }
+ 
+     fun delete(post: Post) {
++        purchaseRepository.deleteByPostId(post.id!!)
+         postRepository.delete(post)
+     }
+ 
+diff --git a/src/main/kotlin/com/rest1/domain/post/post/service/PurchaseService.kt b/src/main/kotlin/com/rest1/domain/post/post/service/PurchaseService.kt
+new file mode 100644
+index 0000000..f243694
+--- /dev/null
++++ b/src/main/kotlin/com/rest1/domain/post/post/service/PurchaseService.kt
+@@ -0,0 +1,93 @@
++package com.rest1.domain.post.post.service
++
++import com.rest1.domain.member.member.repository.MemberRepository
++import com.rest1.domain.post.post.entity.Post
++import com.rest1.domain.post.post.entity.Purchase
++import com.rest1.domain.post.post.repository.PurchaseRepository
++import com.rest1.global.exception.ServiceException
++import org.springframework.dao.DataIntegrityViolationException
++import org.springframework.stereotype.Service
++import org.springframework.transaction.annotation.Transactional
++
++@Service
++class PurchaseService(
++    private val memberRepository: MemberRepository,
++    private val purchaseRepository: PurchaseRepository,
++) {
++    companion object {
++        const val MAX_AMOUNT = 1_000_000_000_000L // 1회 충전/가격 상한
++        const val MAX_BALANCE = 1_000_000_000_000_000L // 잔액 상한 (Long 오버플로 방지)
++    }
++
++    fun balanceOf(memberId: Long): Long =
++        memberRepository.findBalanceById(memberId) ?: throw ServiceException("404-2", "존재하지 않는 회원입니다.")
++
++    @Transactional
++    fun charge(memberId: Long, amount: Long): Long {
++        if (amount < 1) throw ServiceException("400-3", "충전 금액은 1 이상이어야 합니다.")
++        if (amount > MAX_AMOUNT) throw ServiceException("400-4", "충전 금액이 너무 큽니다.")
++
++        val updated = memberRepository.addBalance(memberId, amount, MAX_BALANCE - amount)
++
++        if (updated == 0) {
++            balanceOf(memberId) // 회원이 없으면 404
++            throw ServiceException("400-5", "잔액 한도를 초과합니다.")
++        }
++
++        return balanceOf(memberId)
++    }
++
++    fun isPaid(post: Post): Boolean = post.price > 0
++
++    fun canRead(post: Post, viewerId: Long?): Boolean {
++        if (!isPaid(post)) return true
++        if (viewerId == null) return false
++        if (post.author.id == viewerId) return true
++
++        return purchaseRepository.existsByPostIdAndBuyerId(post.id!!, viewerId)
++    }
++
++    // 목록 조회용: 구매한 글 id 집합을 한 번에 가져온다
++    fun purchasedPostIds(viewerId: Long?): Set<Long> =
++        if (viewerId == null) emptySet() else purchaseRepository.findPostIdsByBuyerId(viewerId).toSet()
++
++    @Transactional
++    fun purchase(buyerId: Long, post: Post) {
++        val authorId = post.author.id!!
++
++        if (!isPaid(post)) throw ServiceException("400-6", "무료 글은 구매할 수 없습니다.")
++        if (authorId == buyerId) throw ServiceException("403-4", "자신의 글은 구매할 수 없습니다.")
++        if (purchaseRepository.existsByPostIdAndBuyerId(post.id!!, buyerId)) {
++            throw ServiceException("409-2", "이미 구매한 글입니다.")
++        }
++
++        // 1) 구매 기록 먼저: 동시에 같은 구매가 오면 유니크 제약이 하나만 통과시킨다
++        //    (실패한 쪽은 예외로 트랜잭션 전체가 롤백되어 차감도 취소된다)
++        try {
++            purchaseRepository.saveAndFlush(Purchase(post.id!!, buyerId, post.price))
++        } catch (e: DataIntegrityViolationException) {
++            throw ServiceException("409-2", "이미 구매한 글입니다.")
++        }
++
++        // 2) 지갑 갱신은 항상 id 오름차순으로 락을 잡아 교차 구매 시 데드락을 막는다
++        if (buyerId < authorId) {
++            debit(buyerId, post.price)
++            credit(authorId, post.price)
++        } else {
++            credit(authorId, post.price)
++            debit(buyerId, post.price)
++        }
++    }
++
++    private fun debit(buyerId: Long, price: Long) {
++        if (memberRepository.subtractBalance(buyerId, price) == 0) {
++            throw ServiceException("402-1", "잔액이 부족합니다.")
++        }
++    }
++
++    private fun credit(authorId: Long, price: Long) {
++        if (memberRepository.addBalance(authorId, price, MAX_BALANCE - price) == 0) {
++            throw ServiceException("500-1", "판매자 지갑에 입금할 수 없습니다.")
++        }
++    }
++}
+diff --git a/src/main/kotlin/com/rest1/global/rq/Rq.kt b/src/main/kotlin/com/rest1/global/rq/Rq.kt
+index 6a0944f..515dbee 100644
+--- a/src/main/kotlin/com/rest1/global/rq/Rq.kt
++++ b/src/main/kotlin/com/rest1/global/rq/Rq.kt
+@@ -20,6 +20,15 @@ class Rq(
+             return Member(principal.id, principal.username, principal.nickname)
+         }
+ 
++    // 비로그인 허용 API 용: 로그인하지 않았으면 null
++    val actorOrNull: Member?
++        get() {
++            val principal = SecurityContextHolder.getContext().authentication?.principal as? SecurityUser
++                ?: return null
++
++            return Member(principal.id, principal.username, principal.nickname)
++        }
++
+     fun setHeader(name: String, value: String) {
+         response.setHeader(name, value)
+     }
+diff --git a/src/main/resources/application.yml b/src/main/resources/application.yml
+index 29d36b0..546899d 100644
+--- a/src/main/resources/application.yml
++++ b/src/main/resources/application.yml
+@@ -19,6 +19,9 @@ spring:
+     hibernate:
+       ddl-auto: update
+     show-sql: true
++  jackson:
++    deserialization:
++      accept-float-as-int: false
+   mvc:
+     hiddenmethod:
+       filter:
+diff --git a/src/test/kotlin/com/rest1/domain/post/post/controller/PaidPostTest.kt b/src/test/kotlin/com/rest1/domain/post/post/controller/PaidPostTest.kt
+new file mode 100644
+index 0000000..cf58a0d
+--- /dev/null
++++ b/src/test/kotlin/com/rest1/domain/post/post/controller/PaidPostTest.kt
+@@ -0,0 +1,214 @@
++package com.rest1.domain.post.post.controller
++
++import com.rest1.domain.member.member.repository.MemberRepository
++import com.rest1.domain.member.member.service.MemberService
++import com.rest1.domain.post.post.repository.PostRepository
++import com.rest1.domain.post.post.repository.PurchaseRepository
++import org.assertj.core.api.Assertions.assertThat
++import org.junit.jupiter.api.AfterEach
++import org.junit.jupiter.api.BeforeEach
++import org.junit.jupiter.api.DisplayName
++import org.junit.jupiter.api.Test
++import org.springframework.beans.factory.annotation.Autowired
++import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc
++import org.springframework.boot.test.context.SpringBootTest
++import org.springframework.http.MediaType
++import org.springframework.test.context.ActiveProfiles
++import org.springframework.test.web.servlet.MockMvc
++import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get
++import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post
++import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder
++import org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath
++import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
++import java.util.concurrent.CountDownLatch
++import java.util.concurrent.Executors
++
++// 동시성 검증을 위해 @Transactional 을 쓰지 않는다 (실제 커밋). 끝나면 만든 데이터를 정리한다.
++@SpringBootTest(properties = ["spring.datasource.url=jdbc:h2:mem:paidtest;MODE=MySQL"]) // 별도 DB: 다른 테스트의 auto-increment id 가정을 건드리지 않는다
++@ActiveProfiles("test")
++@AutoConfigureMockMvc
++class PaidPostTest {
++    @Autowired private lateinit var mvc: MockMvc
++    @Autowired private lateinit var memberService: MemberService
++    @Autowired private lateinit var memberRepository: MemberRepository
++    @Autowired private lateinit var postRepository: PostRepository
++    @Autowired private lateinit var purchaseRepository: PurchaseRepository
++
++    private val createdMemberIds = mutableListOf<Long>()
++    private lateinit var author: String
++    private lateinit var buyer: String
++    private lateinit var other: String
++
++    private fun newUser(tag: String): String {
++        val name = "pt_${tag}_${System.nanoTime()}"
++        val m = memberService.join(name, "1234", name)
++        createdMemberIds.add(m.id!!)
++        return m.apiKey!!
++    }
++
++    @BeforeEach
++    fun setUp() {
++        author = newUser("a")
++        buyer = newUser("b")
++        other = newUser("o")
++    }
++
++    @AfterEach
++    fun tearDown() {
++        postRepository.findAll().filter { it.author.id in createdMemberIds }.forEach {
++            purchaseRepository.deleteByPostId(it.id!!)
++            postRepository.delete(it)
++        }
++        purchaseRepository.findAll().filter { it.buyerId in createdMemberIds }.forEach { purchaseRepository.delete(it) }
++        memberRepository.deleteAllById(createdMemberIds)
++    }
++
++    private fun MockHttpServletRequestBuilder.auth(key: String?) =
++        if (key == null) this else this.header("Authorization", "Bearer $key")
++
++    private fun json(builder: MockHttpServletRequestBuilder, key: String?, body: String? = null): MockHttpServletRequestBuilder {
++        val b = builder.auth(key)
++        return if (body != null) b.contentType(MediaType.APPLICATION_JSON).content(body) else b
++    }
++
++    private fun charge(key: String, amount: String) =
++        mvc.perform(json(post("/api/v1/wallet/charge"), key, """{"amount": $amount}"""))
++
++    private fun balance(key: String): Long {
++        val body = mvc.perform(json(get("/api/v1/wallet"), key)).andExpect(status().isOk).andReturn().response.contentAsString
++        return Regex("\"balance\":(-?\\d+)").find(body)!!.groupValues[1].toLong()
++    }
++
++    private fun write(key: String, price: String? = null): Long {
++        val p = if (price == null) "" else ""","price": $price"""
++        val body = mvc.perform(
++            json(post("/api/v1/posts"), key, """{"title":"제목입니다","content":"비밀본문입니다"$p}""")
++        ).andExpect(status().is2xxSuccessful).andReturn().response.contentAsString
++        return Regex("\"postDto\":\\{\"id\":(\\d+)").find(body)!!.groupValues[1].toLong()
++    }
++
++    private fun purchase(key: String, id: Long) = mvc.perform(json(post("/api/v1/posts/$id/purchase"), key))
++
++    @Test
++    @DisplayName("초기 잔액 0, 충전, 0/음수 충전 거부")
++    fun charging() {
++        assertThat(balance(buyer)).isEqualTo(0)
++        charge(buyer, "1000").andExpect(status().isOk)
++        assertThat(balance(buyer)).isEqualTo(1000)
++        charge(buyer, "0").andExpect(status().is4xxClientError)
++        charge(buyer, "-5").andExpect(status().is4xxClientError)
++        charge(buyer, "1.5").andExpect(status().is4xxClientError)
++        charge(buyer, "null").andExpect(status().is4xxClientError)
++        assertThat(balance(buyer)).isEqualTo(1000)
++    }
++
++    @Test
++    @DisplayName("음수 가격 거부, 가격 생략은 무료")
++    fun price() {
++        mvc.perform(json(post("/api/v1/posts"), author, """{"title":"제목입니다","content":"본문입니다","price":-1}"""))
++            .andExpect(status().is4xxClientError)
++        val free = write(author)
++        mvc.perform(json(get("/api/v1/posts/$free/content"), other))
++            .andExpect(status().isOk).andExpect(jsonPath("$.content").value("비밀본문입니다"))
++        purchase(buyer, free).andExpect(status().is4xxClientError)
++    }
++
++    @Test
++    @DisplayName("구매 정책: 잔액부족, 중복, 본인, 열람 제한, 판매자 입금")
++    fun purchasePolicy() {
++        val id = write(author, "300")
++        val strangers = listOf<String?>(null, other, buyer)
++
++        // 구매 전: 작성자 외에는 본문 못 봄 (단건, 목록, content API)
++        for (k in strangers) {
++            mvc.perform(json(get("/api/v1/posts/$id/content"), k))
++                .andExpect(status().is4xxClientError)
++            mvc.perform(json(get("/api/v1/posts/$id"), k))
++                .andExpect(status().isOk).andExpect(jsonPath("$.content").doesNotExist())
++            val list = mvc.perform(json(get("/api/v1/posts"), k)).andReturn().response.contentAsString
++            assertThat(list).doesNotContain("비밀본문")
++        }
++        mvc.perform(json(get("/api/v1/posts/$id/content"), author))
++            .andExpect(status().isOk).andExpect(jsonPath("$.content").value("비밀본문입니다"))
++        mvc.perform(json(get("/api/v1/posts/$id"), author)).andExpect(jsonPath("$.content").value("비밀본문입니다"))
++
++        // 잔액 부족
++        charge(buyer, "299")
++        purchase(buyer, id).andExpect(status().is4xxClientError)
++        assertThat(balance(buyer)).isEqualTo(299)
++        assertThat(balance(author)).isEqualTo(0)
++
++        // 작성자 본인
++        charge(author, "1000")
++        purchase(author, id).andExpect(status().is4xxClientError)
++        assertThat(balance(author)).isEqualTo(1000)
++
++        // 성공 + 중복
++        charge(buyer, "101")
++        purchase(buyer, id).andExpect(status().is2xxSuccessful)
++        purchase(buyer, id).andExpect(status().is4xxClientError)
++        assertThat(balance(buyer)).isEqualTo(100)
++        assertThat(balance(author)).isEqualTo(1300)
++
++        // 구매 후: 구매자는 보이고, 제3자는 여전히 안 보임
++        mvc.perform(json(get("/api/v1/posts/$id/content"), buyer)).andExpect(jsonPath("$.content").value("비밀본문입니다"))
++        mvc.perform(json(get("/api/v1/posts/$id"), buyer)).andExpect(jsonPath("$.content").value("비밀본문입니다"))
++        mvc.perform(json(get("/api/v1/posts/$id/content"), other)).andExpect(status().is4xxClientError)
++        mvc.perform(json(get("/api/v1/posts/$id"), other)).andExpect(jsonPath("$.content").doesNotExist())
++    }
++
++    private fun parallel(n: Int, task: (Int) -> Unit) {
++        val pool = Executors.newFixedThreadPool(n)
++        val ready = CountDownLatch(n)
++        val go = CountDownLatch(1)
++        val futures = (0 until n).map { i ->
++            pool.submit {
++                ready.countDown(); go.await(); task(i)
++            }
++        }
++        ready.await(); go.countDown()
++        futures.forEach { it.get() }
++        pool.shutdown()
++    }
++
++    @Test
++    @DisplayName("동시 충전은 누락 없음")
++    fun concurrentCharge() {
++        parallel(20) { charge(buyer, "10") }
++        assertThat(balance(buyer)).isEqualTo(200)
++    }
++
++    @Test
++    @DisplayName("동시 중복 구매는 한 번만 차감")
++    fun concurrentDuplicatePurchase() {
++        val id = write(author, "100")
++        charge(buyer, "1000")
++        parallel(15) { purchase(buyer, id) }
++        assertThat(balance(buyer)).isEqualTo(900)
++        assertThat(balance(author)).isEqualTo(100)
++        assertThat(purchaseRepository.existsByPostIdAndBuyerId(id, memberRepository.findByApiKey(buyer).get().id!!)).isTrue()
++    }
++
++    @Test
++    @DisplayName("동시 구매에서 잔액은 음수가 되지 않는다")
++    fun concurrentNoOverdraft() {
++        val ids = (1..10).map { write(author, "100") }
++        charge(buyer, "350")
++        parallel(10) { purchase(buyer, ids[it]) }
++        assertThat(balance(buyer)).isEqualTo(50)
++        assertThat(balance(author)).isEqualTo(300)
++    }
++
++    @Test
++    @DisplayName("서로의 글을 동시에 사도 데드락/오차 없음")
++    fun crossPurchase() {
++        val a = write(author, "10")
++        val b = write(buyer, "10")
++        charge(author, "1000")
++        charge(buyer, "1000")
++        parallel(20) { if (it % 2 == 0) purchase(author, b) else purchase(buyer, a) }
++        assertThat(balance(author) + balance(buyer)).isEqualTo(2000)
++        assertThat(balance(author)).isEqualTo(1000)
++        assertThat(balance(buyer)).isEqualTo(1000)
++    }
++}

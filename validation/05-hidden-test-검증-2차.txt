@@ -1,0 +1,19 @@
+ref-3: 합계 13/13 
+ref-4: 합계 13/13 
+ref-5: 합계 13/13 
+mut-a1-boundary: 합계 12/13 | 실패: F3 
+mut-a2-feeFromAmount: 합계 2/13 | 실패: T0 F1 F2 F4 F5 L1 F3 F6 L3 L4 C1 
+mut-a3-limitWithFee: 합계 12/13 | 실패: L4 
+mut-a4-balanceAmountOnly: 합계 11/13 | 실패: L3 C1 
+mut-nolock: 합계 12/13 | 실패: C1 
+mut-nofloor: 합계 12/13 | 실패: F4 
+refD gradle test rc=0
+ApiV1AdmMemberControllerTest 2 fail 0
+ApiV1MemberControllerTest 6 fail 0
+AuthTokenServiceTest 4 fail 0
+PointGiftPolicyTest 7 fail 0
+ApiV1CommentControllerTest 7 fail 0
+ApiV1AdmPostControllerTest 2 fail 0
+ApiV1PostControllerTest 15 fail 0
+LazyLoadingTest 1 fail 0
+done
